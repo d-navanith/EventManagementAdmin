@@ -1,0 +1,293 @@
+﻿@page "/ViewFeedback"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>View Feedback - Admin Panel</PageTitle>
+
+@if (!isAuthorized)
+{
+    <div class="container animate-fade-in">
+        <div class="access-denied">
+            <div class="lock-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h3>Access Denied</h3>
+            <p class="text-muted">Only administrators can view all feedback. Please sign in with an admin account.</p>
+            <a href="AdminLogin" class="btn btn-danger mt-2">
+                <i class="bi bi-shield-lock me-2"></i>Sign In as Admin
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container animate-fade-in">
+        <div class="page-header">
+            <div class="page-icon" style="background: #f0e8fd; color: #7c3aed;">
+                <i class="bi bi-bar-chart-fill"></i>
+            </div>
+            <div>
+                <h2>Event Feedback</h2>
+                <small class="text-muted">Review student feedback and ratings for all events</small>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="card mb-4">
+            <div class="card-body py-3">
+                <div class="row align-items-end">
+                    <div class="col-md-4 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-funnel me-1"></i>Filter by Event</label>
+                        <select class="form-select" @bind="selectedEventFilter">
+                            <option value="">All Events</option>
+                            @foreach (var evt in eventsList.OrderBy(e => e.Title))
+                            {
+                                <option value="@evt.Id">@evt.Title</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-star me-1"></i>Filter by Rating</label>
+                        <select class="form-select" @bind="selectedRatingFilter">
+                            <option value="0">All Ratings</option>
+                            <option value="5">5 Stars</option>
+                            <option value="4">4 Stars</option>
+                            <option value="3">3 Stars</option>
+                            <option value="2">2 Stars</option>
+                            <option value="1">1 Star</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-search me-1"></i>Search</label>
+                        <input type="text" class="form-control" placeholder="Search by student name..." @bind="searchTerm" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle me-1"></i>Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="text-center my-5">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading feedback...</p>
+            </div>
+        }
+        else if (!feedbackList.Any())
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-chat-square-text" style="font-size: 3rem; color: #cbd6e2;"></i>
+                <h5 class="mt-3 text-muted">No Feedback Yet</h5>
+                <p class="text-muted">Feedback will appear here after students submit their reviews.</p>
+            </div>
+        }
+        else
+        {
+            <!-- Feedback Summary -->
+            <div class="row mb-4">
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #7c3aed;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #7c3aed;">@feedbackList.Count</h4>
+                            <small class="text-muted">Total Feedback</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #f5c26b;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #d4a04a;">
+                                @(feedbackList.Count > 0 ? feedbackList.Average(f => f.Rating).ToString("F1") : "N/A")
+                            </h4>
+                            <small class="text-muted">Average Rating</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #00bda5;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #00bda5;">@feedbackList.Count(f => f.Rating >= 4)</h4>
+                            <small class="text-muted">Positive (4-5 ★)</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #f2545b;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #f2545b;">@feedbackList.Count(f => f.Rating <= 2)</h4>
+                            <small class="text-muted">Negative (1-2 ★)</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-muted mb-3"><small>Showing @FilteredFeedback.Count of @feedbackList.Count feedback entries</small></p>
+
+            <div class="row">
+                @foreach (var item in FilteredFeedback)
+                {
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h6 class="card-title mb-0 fw-bold">@item.EventTitle</h6>
+                                    <span class="badge bg-info">@item.SubmissionDate</span>
+                                </div>
+                                <div class="mb-2">
+                                    @for (int i = 1; i <= 5; i++)
+                                    {
+                                        var starIndex = i;
+                                        <span style="color: @(starIndex <= item.Rating ? "#f5c26b" : "#cbd6e2"); font-size: 1.2rem;">★</span>
+                                    }
+                                    <span class="ms-1 text-muted small">(@item.Rating/5)</span>
+                                </div>
+                                <p class="card-text" style="font-size: 0.875rem;">
+                                    @if (string.IsNullOrEmpty(item.Comments))
+                                    {
+                                        <em class="text-muted">No comments provided.</em>
+                                    }
+                                    else
+                                    {
+                                        @item.Comments
+                                    }
+                                </p>
+                                <hr style="opacity: 0.1;" />
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        <i class="bi bi-person me-1"></i>@item.StudentName
+                                        <span class="mx-1">•</span>
+                                        <i class="bi bi-envelope me-1"></i>@item.StudentEmail
+                                    </small>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteFeedback(item.Id)" title="Delete feedback">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3 animate-fade-in">
+                <i class="bi @(isSuccess ? "bi-check-circle" : "bi-x-circle") me-2"></i>@statusMessage
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<FeedbackViewModel> feedbackList = new();
+    private List<EventViewModel> eventsList = new();
+    private bool isLoading = true;
+    private bool isAuthorized = false;
+    private bool isSuccess = false;
+    private string statusMessage = "";
+    private string selectedEventFilter = "";
+    private int selectedRatingFilter = 0;
+    private string searchTerm = "";
+
+    private List<FeedbackViewModel> FilteredFeedback => feedbackList.Where(f =>
+        (string.IsNullOrEmpty(selectedEventFilter) || f.EventId == selectedEventFilter) &&
+        (selectedRatingFilter == 0 || f.Rating == selectedRatingFilter) &&
+        (string.IsNullOrEmpty(searchTerm) || f.StudentName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+    ).ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isAuthorized = true;
+                    await LoadData();
+                    StateHasChanged();
+                }
+                else
+                {
+                    isAuthorized = false;
+                    isLoading = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isAuthorized = false;
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        statusMessage = "";
+        try
+        {
+            feedbackList = await JS.InvokeAsync<List<FeedbackViewModel>>("firebaseInterop.getFeedback");
+            if (feedbackList == null) feedbackList = new();
+
+            eventsList = await JS.InvokeAsync<List<EventViewModel>>("firebaseInterop.getEvents");
+            if (eventsList == null) eventsList = new();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error loading feedback: " + ex.Message;
+            isSuccess = false;
+            feedbackList = new();
+            eventsList = new();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task DeleteFeedback(string id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this feedback? This action cannot be undone."))
+        {
+            try
+            {
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.deleteFeedback", id);
+                if (result.Success)
+                {
+                    isSuccess = true;
+                    statusMessage = "Feedback deleted successfully.";
+                    await LoadData();
+                }
+                else
+                {
+                    isSuccess = false;
+                    statusMessage = "Error deleting feedback: " + result.Error;
+                }
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                isSuccess = false;
+                statusMessage = "Error deleting feedback: " + ex.Message;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void ClearFilters()
+    {
+        selectedEventFilter = "";
+        selectedRatingFilter = 0;
+        searchTerm = "";
+    }
+}

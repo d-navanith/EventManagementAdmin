@@ -1,0 +1,322 @@
+﻿@page "/AdminLogin"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Admin Login - Campus Event Management</PageTitle>
+
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 85vh;">
+    <div class="login-card card animate-fade-in" style="width: 100%; max-width: 460px;">
+        <div class="card-body">
+            <!-- Admin Login Header -->
+            <div class="login-header">
+                <div style="margin-bottom: 1rem;">
+                    <img src="images/logo-icon.png" alt="Campus Events Logo" style="width: 80px; height: 80px; border-radius: 20px; object-fit: cover; box-shadow: 0 6px 20px rgba(0,0,0,0.15); border: 3px solid #f0f2f5;" />
+                </div>
+                <h3 class="mb-1">Admin Portal</h3>
+                <p class="text-muted mb-0">Sign in with your administrator credentials</p>
+            </div>
+
+            <!-- Admin Login Form -->
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-envelope me-1"></i> Admin Email
+                </label>
+                <input @bind="email" class="form-control" placeholder="Enter admin email" type="email" />
+                @if (!string.IsNullOrEmpty(emailError))
+                {
+                    <small class="text-danger mt-1 d-block">
+                        <i class="bi bi-exclamation-circle me-1"></i>@emailError
+                    </small>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-lock me-1"></i> Password
+                </label>
+                <div class="input-group">
+                    <input @bind="password" class="form-control" type="@(showPassword ? "text" : "password")" placeholder="Enter your password" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick="TogglePassword" style="border-radius: 0 6px 6px 0;">
+                        <i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i>
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(passwordError))
+                {
+                    <small class="text-danger mt-1 d-block">
+                        <i class="bi bi-exclamation-circle me-1"></i>@passwordError
+                    </small>
+                }
+            </div>
+
+            @if (isRegistering)
+            {
+                <div class="mb-3 animate-fade-in">
+                    <label class="form-label">
+                        <i class="bi bi-key me-1"></i> Admin Secret Code
+                    </label>
+                    <input @bind="adminCode" class="form-control" type="password" placeholder="Enter admin secret code" />
+                    @if (!string.IsNullOrEmpty(adminCodeError))
+                    {
+                        <small class="text-danger mt-1 d-block">
+                            <i class="bi bi-exclamation-circle me-1"></i>@adminCodeError
+                        </small>
+                    }
+                    <small class="text-muted d-block mt-1">
+                        <i class="bi bi-info-circle me-1"></i>Contact your system administrator for the secret code.
+                    </small>
+                </div>
+            }
+
+            <!-- Action Buttons -->
+            <button class="btn btn-danger w-100 mb-3 py-2"
+                    @onclick="HandleLogin" disabled="@isProcessing"
+                    style="@(isRegistering ? "display:none;" : "")">
+                @if (isProcessing && !isRegistering)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span>Signing in...</span>
+                }
+                else
+                {
+                    <i class="bi bi-shield-lock me-2"></i>
+                    <span>Sign In as Admin</span>
+                }
+            </button>
+
+            <button class="btn btn-danger w-100 mb-3 py-2"
+                    @onclick="HandleRegister" disabled="@isProcessing"
+                    style="@(!isRegistering ? "display:none;" : "")">
+                @if (isProcessing && isRegistering)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span>Creating admin account...</span>
+                }
+                else
+                {
+                    <i class="bi bi-person-plus me-2"></i>
+                    <span>Register as Admin</span>
+                }
+            </button>
+
+            <div class="text-center">
+                <button class="btn btn-link text-decoration-none" @onclick="ToggleMode">
+                    @if (isRegistering)
+                    {
+                        <span>Already have an admin account? <strong>Sign In</strong></span>
+                    }
+                    else
+                    {
+                        <span>Need an admin account? <strong>Register</strong></span>
+                    }
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div class="alert alert-danger mt-3 animate-fade-in" role="alert">
+                    <i class="bi bi-x-circle me-2"></i>@error
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success mt-3 animate-fade-in" role="alert">
+                    <i class="bi bi-check-circle me-2"></i>@successMessage
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string email = "";
+    private string password = "";
+    private string adminCode = "";
+    private string error = "";
+    private string successMessage = "";
+    private string emailError = "";
+    private string passwordError = "";
+    private string adminCodeError = "";
+    private bool isProcessing = false;
+    private bool isRegistering = false;
+    private bool showPassword = false;
+
+    private const string ADMIN_SECRET = "ADMIN2025";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    Nav.NavigateTo("/", forceLoad: false);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private void ToggleMode()
+    {
+        isRegistering = !isRegistering;
+        ClearErrors();
+    }
+
+    private void TogglePassword()
+    {
+        showPassword = !showPassword;
+    }
+
+    private void ClearErrors()
+    {
+        error = "";
+        successMessage = "";
+        emailError = "";
+        passwordError = "";
+        adminCodeError = "";
+    }
+
+    private bool ValidateInputs()
+    {
+        bool isValid = true;
+        ClearErrors();
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            emailError = "Email address is required.";
+            isValid = false;
+        }
+        else if (!email.Contains("@") || !email.Contains("."))
+        {
+            emailError = "Please enter a valid email address.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            passwordError = "Password is required.";
+            isValid = false;
+        }
+        else if (password.Length < 6)
+        {
+            passwordError = "Password must be at least 6 characters.";
+            isValid = false;
+        }
+
+        if (isRegistering)
+        {
+            if (string.IsNullOrWhiteSpace(adminCode))
+            {
+                adminCodeError = "Admin secret code is required for admin registration.";
+                isValid = false;
+            }
+            else if (adminCode != ADMIN_SECRET)
+            {
+                adminCodeError = "Invalid admin secret code. Please contact your system administrator.";
+                isValid = false;
+            }
+        }
+
+        return isValid;
+    }
+
+    private async Task HandleLogin()
+    {
+        if (!ValidateInputs()) return;
+
+        isProcessing = true;
+        error = "";
+        successMessage = "";
+
+        try
+        {
+            var result = await JS.InvokeAsync<AuthResult>("firebaseAuth.signIn", email, password);
+            if (result.Success)
+            {
+                if (result.Role != "admin")
+                {
+                    error = "This account does not have admin privileges. Please use a valid admin account.";
+                    await JS.InvokeVoidAsync("firebaseAuth.logout");
+                }
+                else
+                {
+                    successMessage = "Login successful! Redirecting to dashboard...";
+                    StateHasChanged();
+                    await Task.Delay(800);
+                    Nav.NavigateTo("/", forceLoad: true);
+                }
+            }
+            else
+            {
+                error = FormatFirebaseError(result.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            error = "Login failed: " + ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        if (!ValidateInputs()) return;
+
+        isProcessing = true;
+        error = "";
+        successMessage = "";
+
+        try
+        {
+            var result = await JS.InvokeAsync<AuthResult>("firebaseAuth.register", email, password, "admin");
+            if (result.Success)
+            {
+                successMessage = "Admin account created successfully! Redirecting to dashboard...";
+                StateHasChanged();
+                await Task.Delay(1500);
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                error = FormatFirebaseError(result.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            error = "Registration failed: " + ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private string FormatFirebaseError(string firebaseError)
+    {
+        if (string.IsNullOrEmpty(firebaseError)) return "An unknown error occurred.";
+
+        if (firebaseError.Contains("user-not-found"))
+            return "No account found with this email address.";
+        if (firebaseError.Contains("wrong-password") || firebaseError.Contains("invalid-credential"))
+            return "Incorrect password. Please try again.";
+        if (firebaseError.Contains("email-already-in-use"))
+            return "An account with this email already exists.";
+        if (firebaseError.Contains("too-many-requests"))
+            return "Too many failed attempts. Please try again later.";
+        if (firebaseError.Contains("network-request-failed"))
+            return "Network error. Please check your internet connection.";
+        if (firebaseError.Contains("invalid-email"))
+            return "The email address format is invalid.";
+        if (firebaseError.Contains("weak-password"))
+            return "Password is too weak. Please use at least 6 characters.";
+
+        return firebaseError;
+    }
+}

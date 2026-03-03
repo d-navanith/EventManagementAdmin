@@ -1,0 +1,102 @@
+﻿@inherits LayoutComponentBase
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <div class="user-status-bar">
+                @if (!string.IsNullOrEmpty(userEmail))
+                {
+                    @if (!string.IsNullOrEmpty(profileImageUrl))
+                    {
+                        <img src="@profileImageUrl" class="user-avatar-img" alt="Profile" />
+                    }
+                    else
+                    {
+                        <div class="user-avatar admin">
+                            @(userEmail.Substring(0, 1).ToUpper())
+                        </div>
+                    }
+                    <div class="user-info">
+                        <div class="user-email">
+                            @if (!string.IsNullOrEmpty(displayName))
+                            {
+                                @displayName
+                            }
+                            else
+                            {
+                                @userEmail
+                            }
+                        </div>
+                        <div class="user-role">Administrator</div>
+                    </div>
+                    <a href="AdminProfile" class="btn-profile-edit" title="Edit Profile">
+                        <i class="bi bi-pencil-square"></i>
+                    </a>
+                    <button class="btn-logout" @onclick="HandleLogout">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </button>
+                }
+                else
+                {
+                    <a href="AdminLogin" class="btn btn-sm btn-danger">
+                        <i class="bi bi-shield-lock"></i> Admin Sign In
+                    </a>
+                }
+            </div>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string userEmail = "";
+    private string profileImageUrl = "";
+    private string displayName = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    userEmail = userInfo.Email;
+                    profileImageUrl = userInfo.ProfileImageUrl ?? "";
+                    displayName = userInfo.DisplayName ?? "";
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // User not logged in - this is expected
+            }
+        }
+    }
+
+    private async Task HandleLogout()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("firebaseAuth.logout");
+            userEmail = "";
+            profileImageUrl = "";
+            displayName = "";
+            Nav.NavigateTo("/AdminLogin", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Logout error: " + ex.Message);
+        }
+    }
+}

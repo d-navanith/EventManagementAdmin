@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel - Campus Event Management</title>
+    <base href="/" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link href="EventManagementAdmin.styles.css" rel="stylesheet" />
+    <link href="manifest.webmanifest" rel="manifest" />
+    <!-- Google Fonts for modern UI -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <!-- Bootstrap JS for modals, dropdowns, tooltips -->
+    <script src="lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="importmap"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import {
+            getFirestore, collection, addDoc, getDocs,
+            getDoc, doc, updateDoc, deleteDoc, query, where, setDoc, orderBy
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+        import {
+            getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+            onAuthStateChanged, signOut
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // =====================================================
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        // =====================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyC1IKU9-zaPCFNUbzBGctxlijryq1Ge7uY",
+            authDomain: "eventmanagementapp-f7b0e.firebaseapp.com",
+            projectId: "eventmanagementapp-f7b0e",
+            storageBucket: "eventmanagementapp-f7b0e.firebasestorage.app",
+            messagingSenderId: "575198497592",
+            appId: "1:575198497592:web:5643d119e0411fe9a38fcd",
+            measurementId: "G-8CEB5FXB0T"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+        const auth = getAuth(app);
+
+        // =====================================================
+        // FIREBASE AUTHENTICATION INTEROP (with Role Support)
+        // =====================================================
+        window.firebaseAuth = {
+            signIn: async (email, password) => {
+                try {
+                    const userInfo = await signInWithEmailAndPassword(auth, email, password);
+                    // Fetch user role from Firestore
+                    const userDoc = await getDoc(doc(db, "users", userInfo.user.uid));
+                    let role = "student";
+                    let profileImageUrl = "";
+                    let displayName = "";
+                    if (userDoc.exists()) {
+                        role = userDoc.data().role || "student";
+                        profileImageUrl = userDoc.data().profileImageUrl || "";
+                        displayName = userDoc.data().displayName || "";
+                    }
+                    return { success: true, email: userInfo.user.email, role: role, uid: userInfo.user.uid, profileImageUrl: profileImageUrl, displayName: displayName };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            register: async (email, password, role) => {
+                try {
+                    const userInfo = await createUserWithEmailAndPassword(auth, email, password);
+                    // Store user role in Firestore users collection
+                    await setDoc(doc(db, "users", userInfo.user.uid), {
+                        email: userInfo.user.email,
+                        role: role || "admin",
+                        createdAt: new Date().toISOString(),
+                        profileImageUrl: "",
+                        displayName: ""
+                    });
+                    return { success: true, email: userInfo.user.email, role: role || "admin", uid: userInfo.user.uid };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            logout: async () => {
+                try {
+                    await signOut(auth);
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            getUser: () => {
+                return auth.currentUser ? { email: auth.currentUser.email, uid: auth.currentUser.uid } : null;
+            },
+            getUserRole: async () => {
+                // Wait for auth to be ready first
+                const user = await new Promise((resolve) => {
+                    if (auth.currentUser) {
+                        resolve(auth.currentUser);
+                        return;
+                    }
+                    const unsubscribe = onAuthStateChanged(auth, (u) => {
+                        unsubscribe();
+                        resolve(u);
+                    });
+                    // Timeout after 5 seconds
+                    setTimeout(() => { resolve(null); }, 5000);
+                });
+                if (!user) return null;
+                try {
+                    const userDoc = await getDoc(doc(db, "users", user.uid));
+                    if (userDoc.exists()) {
+                        return {
+                            email: user.email,
+                            uid: user.uid,
+                            role: userDoc.data().role || "student",
+                            profileImageUrl: userDoc.data().profileImageUrl || "",
+                            displayName: userDoc.data().displayName || ""
+                        };
+                    }
+                    return { email: user.email, uid: user.uid, role: "student", profileImageUrl: "", displayName: "" };
+                } catch (e) {
+                    return { email: user.email, uid: user.uid, role: "student", profileImageUrl: "", displayName: "" };
+                }
+            },
+            waitForAuth: () => {
+                return new Promise((resolve) => {
+                    const unsubscribe = onAuthStateChanged(auth, (user) => {
+                        unsubscribe();
+                        resolve(user ? { email: user.email, uid: user.uid } : null);
+                    });
+                });
+            },
+            // Update user profile (display name and profile image)
+            updateProfile: async (displayName, profileImageBase64) => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) return { success: false, error: "Not authenticated" };
+
+                    let profileImageUrl = "";
+
+                    // Upload profile image if provided
+                    if (profileImageBase64 && profileImageBase64.length > 0) {
+                        const byteString = atob(profileImageBase64.split(',')[1]);
+                        const mimeString = profileImageBase64.split(',')[0].split(':')[1].split(';')[0];
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        const blob = new Blob([ab], { type: mimeString });
+                        const storageRef = ref(storage, 'profile-images/' + user.uid + '_' + Date.now());
+                        await uploadBytes(storageRef, blob);
+                        profileImageUrl = await getDownloadURL(storageRef);
+                    }
+
+                    // Update Firestore user document
+                    const updateData = {};
+                    if (displayName !== null && displayName !== undefined) {
+                        updateData.displayName = displayName;
+                    }
+                    if (profileImageUrl) {
+                        updateData.profileImageUrl = profileImageUrl;
+                    }
+                    updateData.updatedAt = new Date().toISOString();
+
+                    await updateDoc(doc(db, "users", user.uid), updateData);
+
+                    return {
+                        success: true,
+                        profileImageUrl: profileImageUrl || "",
+                        displayName: displayName || ""
+                    };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            // Upload profile image and update Firestore (separated from display name)
+            uploadAndUpdateProfileImage: async (profileImageBase64) => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) return { success: false, error: "Not authenticated. Please sign in again." };
+
+                    if (!profileImageBase64 || profileImageBase64.length === 0) {
+                        return { success: false, error: "No image data provided." };
+                    }
+
+                    // Validate base64 format
+                    const parts = profileImageBase64.split(',');
+                    if (parts.length !== 2) {
+                        return { success: false, error: "Invalid image data format." };
+                    }
+
+                    let profileImageUrl = "";
+
+                    // Convert base64 to blob
+                    const byteString = atob(parts[1]);
+                    const mimeMatch = parts[0].match(/data:([^;]+);/);
+                    const mimeString = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    const blob = new Blob([ab], { type: mimeString });
+
+                    // Determine file extension
+                    const ext = mimeString.split('/')[1] || 'jpg';
+                    const fileName = 'profile_' + user.uid + '_' + Date.now() + '.' + ext;
+                    const storageRef = ref(storage, 'profile-images/' + fileName);
+
+                    console.log('Uploading profile image...', fileName, 'size:', blob.size);
+                    await uploadBytes(storageRef, blob);
+                    profileImageUrl = await getDownloadURL(storageRef);
+                    console.log('Profile image uploaded, URL:', profileImageUrl);
+
+                    // Update Firestore user document with new image URL
+                    await updateDoc(doc(db, "users", user.uid), {
+                        profileImageUrl: profileImageUrl,
+                        updatedAt: new Date().toISOString()
+                    });
+
+                    return {
+                        success: true,
+                        profileImageUrl: profileImageUrl,
+                        displayName: ""
+                    };
+                } catch (e) {
+                    console.error('Profile image upload error:', e);
+                    // Provide more specific error messages
+                    let errorMsg = e.message || "Unknown error";
+                    if (errorMsg.includes('storage/unauthorized')) {
+                        errorMsg = "Storage permission denied. Please check Firebase Storage rules allow authenticated writes to 'profile-images/' path.";
+                    } else if (errorMsg.includes('storage/quota-exceeded')) {
+                        errorMsg = "Storage quota exceeded. Please contact the administrator.";
+                    } else if (errorMsg.includes('storage/canceled')) {
+                        errorMsg = "Upload was cancelled. Please try again.";
+                    }
+                    return { success: false, error: errorMsg };
+                }
+            },
+            // Update display name only (no image change)
+            updateDisplayName: async (displayName) => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) return { success: false, error: "Not authenticated. Please sign in again." };
+
+                    const updateData = {
+                        updatedAt: new Date().toISOString()
+                    };
+                    if (displayName !== null && displayName !== undefined) {
+                        updateData.displayName = displayName;
+                    }
+
+                    await updateDoc(doc(db, "users", user.uid), updateData);
+
+                    return {
+                        success: true,
+                        profileImageUrl: "",
+                        displayName: displayName || ""
+                    };
+                } catch (e) {
+                    console.error('Display name update error:', e);
+                    return { success: false, error: e.message };
+                }
+            },
+            // Remove profile image
+            removeProfileImage: async () => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) return { success: false, error: "Not authenticated. Please sign in again." };
+                    await updateDoc(doc(db, "users", user.uid), {
+                        profileImageUrl: "",
+                        updatedAt: new Date().toISOString()
+                    });
+                    return { success: true };
+                } catch (e) {
+                    console.error('Remove profile image error:', e);
+                    return { success: false, error: e.message };
+                }
+            }
+        };
+
+        // =====================================================
+        // FIREBASE FIRESTORE INTEROP - EVENTS
+        // =====================================================
+        window.firebaseInterop = {
+            // --- Events CRUD ---
+            saveEvent: async (eventData) => {
+                try {
+                    // Add createdAt timestamp for ordering
+                    eventData.createdAt = new Date().toISOString();
+                    const docRef = await addDoc(collection(db, "events"), eventData);
+                    return { success: true, id: docRef.id };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            getEvents: async () => {
+                try {
+                    const querySnap = await getDocs(collection(db, "events"));
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching events:", e);
+                    return [];
+                }
+            },
+            getEventById: async (id) => {
+                try {
+                    const docRef = doc(db, "events", id);
+                    const docSnap = await getDoc(docRef);
+                    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+                } catch (e) {
+                    console.error("Error fetching event:", e);
+                    return null;
+                }
+            },
+            updateEvent: async (id, eventData) => {
+                try {
+                    const docRef = doc(db, "events", id);
+                    // Add updatedAt timestamp
+                    eventData.updatedAt = new Date().toISOString();
+                    await updateDoc(docRef, eventData);
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            deleteEvent: async (id) => {
+                try {
+                    await deleteDoc(doc(db, "events", id));
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+
+            // --- Get Events for Calendar (returns simplified event data) ---
+            getEventsForCalendar: async () => {
+                try {
+                    const querySnap = await getDocs(collection(db, "events"));
+                    return querySnap.docs.map(d => {
+                        const data = d.data();
+                        return {
+                            id: d.id,
+                            title: data.title || data.Title || "",
+                            date: data.date || data.Date || "",
+                            time: data.time || data.Time || "",
+                            category: data.category || data.Category || "",
+                            status: data.status || data.Status || "",
+                            location: data.location || data.Location || ""
+                        };
+                    });
+                } catch (e) {
+                    console.error("Error fetching calendar events:", e);
+                    return [];
+                }
+            },
+
+            // --- RSVPs CRUD ---
+            saveRSVP: async (rsvpData) => {
+                try {
+                    const docRef = await addDoc(collection(db, "rsvps"), rsvpData);
+                    return { success: true, id: docRef.id };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            getRSVPs: async () => {
+                try {
+                    const querySnap = await getDocs(collection(db, "rsvps"));
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching RSVPs:", e);
+                    return [];
+                }
+            },
+            getRSVPById: async (id) => {
+                try {
+                    const docRef = doc(db, "rsvps", id);
+                    const docSnap = await getDoc(docRef);
+                    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+                } catch (e) {
+                    console.error("Error fetching RSVP:", e);
+                    return null;
+                }
+            },
+            getRSVPsByEvent: async (eventId) => {
+                try {
+                    const q = query(collection(db, "rsvps"), where("eventId", "==", eventId));
+                    const querySnap = await getDocs(q);
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching RSVPs by event:", e);
+                    return [];
+                }
+            },
+            updateRSVP: async (id, data) => {
+                try {
+                    const docRef = doc(db, "rsvps", id);
+                    await updateDoc(docRef, data);
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            deleteRSVP: async (id) => {
+                try {
+                    await deleteDoc(doc(db, "rsvps", id));
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+
+            // --- Feedback CRUD ---
+            saveFeedback: async (feedbackData) => {
+                try {
+                    const docRef = await addDoc(collection(db, "feedback"), feedbackData);
+                    return { success: true, id: docRef.id };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+            getFeedback: async () => {
+                try {
+                    const querySnap = await getDocs(collection(db, "feedback"));
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching feedback:", e);
+                    return [];
+                }
+            },
+            getFeedbackByEvent: async (eventId) => {
+                try {
+                    const q = query(collection(db, "feedback"), where("eventId", "==", eventId));
+                    const querySnap = await getDocs(q);
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching feedback by event:", e);
+                    return [];
+                }
+            },
+            deleteFeedback: async (id) => {
+                try {
+                    await deleteDoc(doc(db, "feedback", id));
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+
+            // --- Users Management ---
+            getUsers: async () => {
+                try {
+                    const querySnap = await getDocs(collection(db, "users"));
+                    return querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) {
+                    console.error("Error fetching users:", e);
+                    return [];
+                }
+            },
+            updateUserRole: async (uid, role) => {
+                try {
+                    const docRef = doc(db, "users", uid);
+                    await updateDoc(docRef, { role: role });
+                    return { success: true };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            },
+
+            // --- Dashboard Stats ---
+            getDashboardStats: async () => {
+                try {
+                    const eventsSnap = await getDocs(collection(db, "events"));
+                    const rsvpsSnap = await getDocs(collection(db, "rsvps"));
+                    const feedbackSnap = await getDocs(collection(db, "feedback"));
+
+                    const events = eventsSnap.docs.map(d => d.data());
+                    const rsvps = rsvpsSnap.docs.map(d => d.data());
+                    const feedbacks = feedbackSnap.docs.map(d => d.data());
+
+                    const totalEvents = events.length;
+                    const totalRSVPs = rsvps.length;
+                    const totalFeedback = feedbacks.length;
+                    const confirmedRSVPs = rsvps.filter(r => r.status === "Confirmed").length;
+                    const cancelledRSVPs = rsvps.filter(r => r.status === "Cancelled").length;
+                    const pendingRSVPs = rsvps.filter(r => r.status === "Pending").length;
+
+                    let averageRating = 0;
+                    if (feedbacks.length > 0) {
+                        const totalRating = feedbacks.reduce((sum, f) => sum + (f.rating || 0), 0);
+                        averageRating = totalRating / feedbacks.length;
+                    }
+
+                    const upcomingEvents = events.filter(e => e.status === "Upcoming").length;
+                    const ongoingEvents = events.filter(e => e.status === "Ongoing").length;
+                    const completedEvents = events.filter(e => e.status === "Completed").length;
+                    const cancelledEvents = events.filter(e => e.status === "Cancelled").length;
+
+                    // Category breakdown
+                    const categories = {};
+                    events.forEach(e => {
+                        const cat = e.category || "Other";
+                        categories[cat] = (categories[cat] || 0) + 1;
+                    });
+
+                    // Positive feedback count (4-5 stars)
+                    const positiveFeedback = feedbacks.filter(f => f.rating >= 4).length;
+
+                    return {
+                        TotalEvents: totalEvents,
+                        TotalRSVPs: totalRSVPs,
+                        TotalFeedback: totalFeedback,
+                        AverageRating: averageRating,
+                        ConfirmedRSVPs: confirmedRSVPs,
+                        CancelledRSVPs: cancelledRSVPs,
+                        PendingRSVPs: pendingRSVPs,
+                        UpcomingEvents: upcomingEvents,
+                        OngoingEvents: ongoingEvents,
+                        CompletedEvents: completedEvents,
+                        CancelledEvents: cancelledEvents,
+                        PositiveFeedback: positiveFeedback
+                    };
+                } catch (e) {
+                    console.error("Error fetching dashboard stats:", e);
+                    return {
+                        TotalEvents: 0, TotalRSVPs: 0, TotalFeedback: 0, AverageRating: 0,
+                        ConfirmedRSVPs: 0, CancelledRSVPs: 0, PendingRSVPs: 0,
+                        UpcomingEvents: 0, OngoingEvents: 0, CompletedEvents: 0, CancelledEvents: 0,
+                        PositiveFeedback: 0
+                    };
+                }
+            },
+
+            // --- Upload Image to Firebase Storage ---
+            uploadImage: async (base64Data, fileName) => {
+                try {
+                    // Convert base64 to blob
+                    const byteString = atob(base64Data.split(',')[1]);
+                    const mimeString = base64Data.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    const blob = new Blob([ab], { type: mimeString });
+
+                    const storageRef = ref(storage, 'event-images/' + Date.now() + '_' + fileName);
+                    await uploadBytes(storageRef, blob);
+                    const downloadURL = await getDownloadURL(storageRef);
+                    return { success: true, url: downloadURL };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            }
+        };
+
+        // Signal that Firebase is ready
+        window.firebaseReady = true;
+
+        // =====================================================
+        // RICH TEXT EDITOR HELPERS
+        // =====================================================
+        window.richEditor = {
+            // Initialize the editor with content
+            init: (editorId, content) => {
+                const editor = document.getElementById(editorId);
+                if (editor) {
+                    editor.innerHTML = content || '';
+                }
+            },
+            // Get HTML content from editor
+            getContent: (editorId) => {
+                const editor = document.getElementById(editorId);
+                return editor ? editor.innerHTML : '';
+            },
+            // Get plain text content from editor
+            getPlainText: (editorId) => {
+                const editor = document.getElementById(editorId);
+                return editor ? editor.innerText : '';
+            },
+            // Set content in editor
+            setContent: (editorId, content) => {
+                const editor = document.getElementById(editorId);
+                if (editor) {
+                    editor.innerHTML = content || '';
+                }
+            },
+            // Execute formatting command
+            execCommand: (command, value) => {
+                document.execCommand(command, false, value || null);
+            },
+            // Focus the editor
+            focus: (editorId) => {
+                const editor = document.getElementById(editorId);
+                if (editor) {
+                    editor.focus();
+                }
+            }
+        };
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' });</script>
+</body>
+
+</html>

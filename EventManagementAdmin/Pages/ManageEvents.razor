@@ -1,0 +1,824 @@
+﻿@page "/ManageEvents"
+@page "/ManageEvents/{Id}"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Manage Events - Admin Panel</PageTitle>
+
+@if (!isAuthorized)
+{
+    <div class="container animate-fade-in">
+        <div class="access-denied">
+            <div class="lock-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h3>Access Denied</h3>
+            <p class="text-muted">Only administrators can manage events. Please sign in with an admin account.</p>
+            <a href="AdminLogin" class="btn btn-danger mt-2">
+                <i class="bi bi-shield-lock me-2"></i>Sign In as Admin
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container animate-fade-in">
+        <div class="page-header">
+            <div class="page-icon" style="background: linear-gradient(135deg, rgba(239, 71, 111, 0.1), rgba(239, 71, 111, 0.2)); color: #ef476f;">
+                <i class="bi bi-gear-fill"></i>
+            </div>
+            <div>
+                <h2>@(string.IsNullOrEmpty(Id) ? "Add New Event" : "Edit Event")</h2>
+                <small class="text-muted">Create and manage campus events</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Event Form -->
+            <div class="col-md-7 mb-4">
+                <div class="card">
+                    <div class="card-body p-4">
+                        <EditForm Model="@eventModel" OnValidSubmit="HandleSubmit">
+                            <div class="mb-3">
+                                <label class="form-label">Title <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="eventModel.Title" placeholder="Event title" />
+                                @if (!string.IsNullOrEmpty(titleError))
+                                {
+                                    <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@titleError</small>
+                                }
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description <span class="text-danger">*</span></label>
+                                <!-- Rich Text Editor Toolbar -->
+                                <div class="rich-editor-toolbar">
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("bold")' title="Bold (Ctrl+B)">
+                                        <i class="bi bi-type-bold"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("italic")' title="Italic (Ctrl+I)">
+                                        <i class="bi bi-type-italic"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("underline")' title="Underline (Ctrl+U)">
+                                        <i class="bi bi-type-underline"></i>
+                                    </button>
+                                    <span class="editor-separator"></span>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("insertUnorderedList")' title="Bullet List">
+                                        <i class="bi bi-list-ul"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("insertOrderedList")' title="Numbered List">
+                                        <i class="bi bi-list-ol"></i>
+                                    </button>
+                                    <span class="editor-separator"></span>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("justifyLeft")' title="Align Left">
+                                        <i class="bi bi-text-left"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("justifyCenter")' title="Align Center">
+                                        <i class="bi bi-text-center"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick='() => ExecCommand("justifyRight")' title="Align Right">
+                                        <i class="bi bi-text-right"></i>
+                                    </button>
+                                    <span class="editor-separator"></span>
+                                    <button type="button" class="editor-btn" @onclick="ClearEditorFormatting" title="Clear Formatting">
+                                        <i class="bi bi-eraser"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" @onclick="ToggleSourceView" title="@(showSourceView ? "Visual Editor" : "HTML Source")">
+                                        <i class="bi @(showSourceView ? "bi-eye" : "bi-code-slash")"></i>
+                                    </button>
+                                </div>
+                                <!-- Rich Text Editor Content Area -->
+                                @if (showSourceView)
+                                {
+                                    <textarea class="form-control rich-editor-source"
+                                              rows="6"
+                                              @bind="eventModel.Description"
+                                              placeholder="Enter HTML source code..."></textarea>
+                                }
+                                else
+                                {
+                                    <div id="descriptionEditor"
+                                         class="rich-editor-content"
+                                         contenteditable="true"
+                                         @onfocusout="OnEditorBlur"
+                                         data-placeholder="Describe the event in detail... (supports copy & paste with formatting)">
+                                    </div>
+                                }
+                                <small class="text-muted mt-1 d-block">
+                                    <i class="bi bi-info-circle me-1"></i>Supports copy & paste from Word, Google Docs, web pages. Use toolbar for formatting.
+                                </small>
+                                @if (!string.IsNullOrEmpty(descriptionError))
+                                {
+                                    <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@descriptionError</small>
+                                }
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Date <span class="text-danger">*</span></label>
+                                    <input type="date" class="form-control" value="@eventModel.Date"
+                                           @onchange="@((ChangeEventArgs e) => eventModel.Date = e.Value?.ToString() ?? "")" />
+                                    @if (!string.IsNullOrEmpty(dateError))
+                                    {
+                                        <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@dateError</small>
+                                    }
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Time <span class="text-danger">*</span></label>
+                                    <input type="time" class="form-control" value="@eventModel.Time"
+                                           @onchange="@((ChangeEventArgs e) => eventModel.Time = e.Value?.ToString() ?? "")" />
+                                    @if (!string.IsNullOrEmpty(timeError))
+                                    {
+                                        <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@timeError</small>
+                                    }
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Location <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="eventModel.Location" placeholder="e.g., Main Hall, Room 201" />
+                                @if (!string.IsNullOrEmpty(locationError))
+                                {
+                                    <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@locationError</small>
+                                }
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Category <span class="text-danger">*</span></label>
+                                    <select class="form-select" @bind="eventModel.Category">
+                                        <option value="">-- Select Category --</option>
+                                        <option value="Workshop">Workshop</option>
+                                        <option value="Seminar">Seminar</option>
+                                        <option value="Sports">Sports</option>
+                                        <option value="Social">Social</option>
+                                        <option value="Academic">Academic</option>
+                                        <option value="Cultural">Cultural</option>
+                                    </select>
+                                    @if (!string.IsNullOrEmpty(categoryError))
+                                    {
+                                        <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@categoryError</small>
+                                    }
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" @bind="eventModel.Status">
+                                        <option value="Upcoming">Upcoming</option>
+                                        <option value="Ongoing">Ongoing</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Organizer <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="eventModel.Organizer" placeholder="Organizer name or department" />
+                                @if (!string.IsNullOrEmpty(organizerError))
+                                {
+                                    <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@organizerError</small>
+                                }
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Max Attendees</label>
+                                    <InputNumber class="form-control" @bind-Value="eventModel.MaxAttendees" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Event Image</label>
+                                    <InputFile OnChange="OnInputFileChange" class="form-control" accept="image/*" />
+                                    @if (isUploadingImage)
+                                    {
+                                        <div class="mt-2 text-center">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <small class="ms-1 text-muted">Processing image...</small>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(eventModel.ImageUrl))
+                                    {
+                                        <div class="mt-2 text-center" style="background:#f8f9fa; border-radius:12px; padding:8px;">
+                                            <img src="@eventModel.ImageUrl" class="img-thumbnail"
+                                                 style="max-height:150px; max-width:100%; object-fit:contain; border-radius: 10px; border:none; cursor:pointer;"
+                                                 @onclick="() => ViewImageFullScreen(eventModel.ImageUrl, eventModel.Title)"
+                                                 title="Click to view full image" />
+                                            <div class="mt-1">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemoveImage">
+                                                    <i class="bi bi-trash me-1"></i>Remove Image
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 mt-2">
+                                <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    }
+                                    <i class="bi @(string.IsNullOrEmpty(Id) ? "bi-plus-circle" : "bi-pencil") me-1"></i>
+                                    @(isSubmitting ? "Saving..." : (string.IsNullOrEmpty(Id) ? "Create Event" : "Update Event"))
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+                                </button>
+                            </div>
+                        </EditForm>
+
+                        @if (!string.IsNullOrEmpty(statusMessage))
+                        {
+                            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3 animate-fade-in">
+                                <i class="bi @(isSuccess ? "bi-check-circle" : "bi-x-circle") me-2"></i>@statusMessage
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Events List -->
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #0d2840, #112f4d); color: white; border-radius: 16px 16px 0 0;">
+                        <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>All Events (@eventsList.Count)</h5>
+                        <button class="btn btn-sm btn-outline-light" @onclick="LoadEventsList" title="Refresh list">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                        @if (isLoadingList)
+                        {
+                            <div class="text-center my-3">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <span class="ms-2 text-muted">Loading events...</span>
+                            </div>
+                        }
+                        else if (!eventsList.Any())
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-calendar-x" style="font-size: 2rem; color: #dee2e6;"></i>
+                                <p class="text-muted mt-2">No events created yet.</p>
+                                <small class="text-muted">Use the form to create your first event.</small>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var item in eventsList)
+                            {
+                                <div class="card mb-2 event-list-item @(Id == item.Id ? "border-primary" : "")" style="border: 1px solid @(Id == item.Id ? "#48adfc" : "#e0e0e0");">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div style="min-width: 0; flex: 1;">
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    @if (!string.IsNullOrEmpty(item.ImageUrl))
+                                                    {
+                                                        <img src="@item.ImageUrl" style="width:36px; height:36px; object-fit:cover; border-radius:8px;" alt="" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:#f0f2f5; border-radius:8px; font-size:1.1rem;">
+                                                            @GetCategoryEmoji(item.Category)
+                                                        </span>
+                                                    }
+                                                    <strong style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@item.Title</strong>
+                                                </div>
+                                                <small class="text-muted">
+                                                    <i class="bi bi-calendar3 me-1"></i>@item.Date
+                                                    <span class="mx-1">|</span>
+                                                    <span class="badge bg-info" style="font-size: 0.7rem;">@item.Category</span>
+                                                    <span class="badge @GetStatusBadgeClass(item.Status) ms-1" style="font-size: 0.65rem;">@item.Status</span>
+                                                </small>
+                                            </div>
+                                            <div class="d-flex gap-1 ms-2">
+                                                <button class="btn btn-sm btn-outline-primary"
+                                                        @onclick="() => NavigateToEdit(item.Id)" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger"
+                                                        @onclick="() => ConfirmDelete(item.Id)" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Fullscreen Modal -->
+    @if (showImageModal && !string.IsNullOrEmpty(fullScreenImageUrl))
+    {
+        <div class="modal fade show d-block" tabindex="-1"
+             style="background-color: rgba(0,0,0,0.9); z-index:9999;"
+             @onclick="CloseImageModal">
+            <div class="d-flex flex-column justify-content-center align-items-center" style="min-height:100vh; padding:20px;">
+                <button type="button" class="btn btn-outline-light btn-sm position-fixed" style="top:20px; right:20px; z-index:10000; border-radius:50%; width:40px; height:40px;"
+                        @onclick="CloseImageModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <h6 class="text-white mb-3">@fullScreenImageTitle</h6>
+                <img src="@fullScreenImageUrl" class="img-fluid"
+                     style="max-height:85vh; max-width:95vw; object-fit:contain; border-radius:12px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);"
+                     alt="@fullScreenImageTitle"
+                     @onclick:stopPropagation="true" />
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private Event eventModel = new Event();
+    private List<EventViewModel> eventsList = new();
+    private bool isSubmitting = false;
+    private bool isLoadingList = true;
+    private bool isUploadingImage = false;
+    private bool isSuccess = false;
+    private bool isAuthorized = false;
+    private string statusMessage = "";
+
+    // Image fullscreen modal
+    private bool showImageModal = false;
+    private string fullScreenImageUrl = "";
+    private string fullScreenImageTitle = "";
+
+    // Rich text editor
+    private bool showSourceView = false;
+    private bool editorInitialized = false;
+
+    // Validation error messages
+    private string titleError = "";
+    private string descriptionError = "";
+    private string dateError = "";
+    private string timeError = "";
+    private string locationError = "";
+    private string categoryError = "";
+    private string organizerError = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isAuthorized = true;
+                    await LoadEventsList();
+
+                    // If editing, load the event data
+                    if (!string.IsNullOrEmpty(Id))
+                    {
+                        await LoadEventForEdit(Id);
+                    }
+
+                    StateHasChanged();
+
+                    // Initialize the rich text editor with current description content
+                    await Task.Delay(100); // Small delay to ensure DOM is ready
+                    await InitializeEditor();
+                }
+                else
+                {
+                    isAuthorized = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isAuthorized = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id) && isAuthorized)
+        {
+            await LoadEventForEdit(Id);
+            // Re-initialize editor with loaded content
+            await Task.Delay(50);
+            await InitializeEditor();
+        }
+        else if (string.IsNullOrEmpty(Id))
+        {
+            eventModel = new Event();
+            // Clear the editor
+            if (editorInitialized)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("richEditor.setContent", "descriptionEditor", "");
+                }
+                catch { }
+            }
+        }
+    }
+
+    private async Task InitializeEditor()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("richEditor.init", "descriptionEditor", eventModel.Description ?? "");
+            editorInitialized = true;
+        }
+        catch
+        {
+            // Editor not ready yet, will be initialized on next render
+        }
+    }
+
+    private async Task OnEditorBlur()
+    {
+        try
+        {
+            // Sync the editor content back to the model
+            var content = await JS.InvokeAsync<string>("richEditor.getContent", "descriptionEditor");
+            eventModel.Description = content ?? "";
+        }
+        catch { }
+    }
+
+    private async Task ExecCommand(string command)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("richEditor.execCommand", command, null);
+            await JS.InvokeVoidAsync("richEditor.focus", "descriptionEditor");
+        }
+        catch { }
+    }
+
+    private async Task ClearEditorFormatting()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("richEditor.execCommand", "removeFormat", null);
+            await JS.InvokeVoidAsync("richEditor.focus", "descriptionEditor");
+        }
+        catch { }
+    }
+
+    private async Task ToggleSourceView()
+    {
+        if (!showSourceView)
+        {
+            // Switching to source view - sync content from editor
+            try
+            {
+                var content = await JS.InvokeAsync<string>("richEditor.getContent", "descriptionEditor");
+                eventModel.Description = content ?? "";
+            }
+            catch { }
+        }
+        showSourceView = !showSourceView;
+        StateHasChanged();
+
+        if (!showSourceView)
+        {
+            // Switching back to visual editor - re-initialize with current content
+            await Task.Delay(50);
+            await InitializeEditor();
+        }
+    }
+
+    private async Task SyncEditorContent()
+    {
+        try
+        {
+            var content = await JS.InvokeAsync<string>("richEditor.getContent", "descriptionEditor");
+            eventModel.Description = content ?? "";
+        }
+        catch { }
+    }
+
+    private async Task LoadEventForEdit(string eventId)
+    {
+        try
+        {
+            var eventToUpdate = await JS.InvokeAsync<EventViewModel>("firebaseInterop.getEventById", eventId);
+            if (eventToUpdate != null)
+            {
+                eventModel = new Event
+                {
+                    Title = eventToUpdate.Title,
+                    Description = eventToUpdate.Description,
+                    Date = eventToUpdate.Date,
+                    Time = eventToUpdate.Time,
+                    Location = eventToUpdate.Location,
+                    Category = eventToUpdate.Category,
+                    Organizer = eventToUpdate.Organizer,
+                    ImageUrl = eventToUpdate.ImageUrl,
+                    MaxAttendees = eventToUpdate.MaxAttendees,
+                    Status = eventToUpdate.Status
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error loading event: " + ex.Message;
+            isSuccess = false;
+        }
+    }
+
+    private async Task LoadEventsList()
+    {
+        isLoadingList = true;
+        try
+        {
+            eventsList = await JS.InvokeAsync<List<EventViewModel>>("firebaseInterop.getEvents");
+            if (eventsList == null) eventsList = new();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error loading events: " + ex.Message;
+            isSuccess = false;
+            eventsList = new();
+        }
+        finally
+        {
+            isLoadingList = false;
+        }
+    }
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        isUploadingImage = true;
+        StateHasChanged();
+
+        try
+        {
+            var maxSize = 1024 * 1024; // 1MB limit
+            if (e.File.Size > maxSize)
+            {
+                statusMessage = "Image file size must be less than 1MB.";
+                isSuccess = false;
+                isUploadingImage = false;
+                StateHasChanged();
+                return;
+            }
+
+            var buffer = new byte[e.File.Size];
+            await e.File.OpenReadStream(maxSize).ReadAsync(buffer);
+            eventModel.ImageUrl = $"data:{e.File.ContentType};base64,{Convert.ToBase64String(buffer)}";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error processing image: " + ex.Message;
+            isSuccess = false;
+        }
+        finally
+        {
+            isUploadingImage = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveImage()
+    {
+        eventModel.ImageUrl = "";
+    }
+
+    private void ViewImageFullScreen(string imageUrl, string title)
+    {
+        fullScreenImageUrl = imageUrl;
+        fullScreenImageTitle = title ?? "Event Image";
+        showImageModal = true;
+    }
+
+    private void CloseImageModal()
+    {
+        showImageModal = false;
+        fullScreenImageUrl = "";
+        fullScreenImageTitle = "";
+    }
+
+    private bool ValidateInputs()
+    {
+        bool isValid = true;
+        titleError = "";
+        descriptionError = "";
+        dateError = "";
+        timeError = "";
+        locationError = "";
+        categoryError = "";
+        organizerError = "";
+
+        if (string.IsNullOrWhiteSpace(eventModel.Title))
+        {
+            titleError = "Event title is required.";
+            isValid = false;
+        }
+        else if (eventModel.Title.Length < 3)
+        {
+            titleError = "Title must be at least 3 characters.";
+            isValid = false;
+        }
+
+        // For rich text editor, check plain text length
+        var descText = System.Text.RegularExpressions.Regex.Replace(eventModel.Description ?? "", "<[^>]*>", "").Trim();
+        if (string.IsNullOrWhiteSpace(descText))
+        {
+            descriptionError = "Description is required.";
+            isValid = false;
+        }
+        else if (descText.Length < 10)
+        {
+            descriptionError = "Description must be at least 10 characters.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(eventModel.Date))
+        {
+            dateError = "Event date is required.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(eventModel.Time))
+        {
+            timeError = "Event time is required.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(eventModel.Location))
+        {
+            locationError = "Location is required.";
+            isValid = false;
+        }
+        else if (eventModel.Location.Length < 2)
+        {
+            locationError = "Location must be at least 2 characters.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(eventModel.Category))
+        {
+            categoryError = "Please select a category.";
+            isValid = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(eventModel.Organizer))
+        {
+            organizerError = "Organizer name is required.";
+            isValid = false;
+        }
+        else if (eventModel.Organizer.Length < 2)
+        {
+            organizerError = "Organizer name must be at least 2 characters.";
+            isValid = false;
+        }
+
+        return isValid;
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Sync editor content before validation
+        if (!showSourceView)
+        {
+            await SyncEditorContent();
+        }
+
+        if (!ValidateInputs()) return;
+
+        isSubmitting = true;
+        statusMessage = "";
+        isSuccess = false;
+
+        try
+        {
+            if (string.IsNullOrEmpty(Id))
+            {
+                // Create new event
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.saveEvent", eventModel);
+                if (result.Success)
+                {
+                    isSuccess = true;
+                    statusMessage = $"Event '{eventModel.Title}' created successfully!";
+                    eventModel = new Event();
+                    // Clear the editor
+                    try
+                    {
+                        await JS.InvokeVoidAsync("richEditor.setContent", "descriptionEditor", "");
+                    }
+                    catch { }
+                }
+                else
+                {
+                    statusMessage = "Error creating event: " + result.Error;
+                }
+            }
+            else
+            {
+                // Update existing event
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.updateEvent", Id, eventModel);
+                if (result.Success)
+                {
+                    isSuccess = true;
+                    statusMessage = $"Event '{eventModel.Title}' updated successfully!";
+                }
+                else
+                {
+                    statusMessage = "Error updating event: " + result.Error;
+                }
+            }
+            await LoadEventsList();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error saving event: " + ex.Message;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void NavigateToEdit(string id) => Nav.NavigateTo($"/ManageEvents/{id}");
+
+    private async Task ConfirmDelete(string id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this event? This action cannot be undone."))
+        {
+            try
+            {
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.deleteEvent", id);
+                if (result.Success)
+                {
+                    statusMessage = "Event deleted successfully.";
+                    isSuccess = true;
+
+                    // If we were editing this event, reset the form
+                    if (Id == id)
+                    {
+                        ResetForm();
+                    }
+                }
+                else
+                {
+                    statusMessage = "Error deleting event: " + result.Error;
+                    isSuccess = false;
+                }
+                await LoadEventsList();
+            }
+            catch (Exception ex)
+            {
+                statusMessage = "Error deleting event: " + ex.Message;
+                isSuccess = false;
+            }
+        }
+    }
+
+    private async void ResetForm()
+    {
+        eventModel = new Event();
+        statusMessage = "";
+        ClearValidationErrors();
+        Id = null;
+        // Clear the editor
+        try
+        {
+            await JS.InvokeVoidAsync("richEditor.setContent", "descriptionEditor", "");
+        }
+        catch { }
+        Nav.NavigateTo("/ManageEvents");
+    }
+
+    private void ClearValidationErrors()
+    {
+        titleError = "";
+        descriptionError = "";
+        dateError = "";
+        timeError = "";
+        locationError = "";
+        categoryError = "";
+        organizerError = "";
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Upcoming" => "bg-primary",
+            "Ongoing" => "bg-success",
+            "Completed" => "bg-secondary",
+            "Cancelled" => "bg-danger",
+            _ => "bg-info"
+        };
+    }
+
+    private string GetCategoryEmoji(string category)
+    {
+        return category switch
+        {
+            "Workshop" => "🔧",
+            "Seminar" => "📚",
+            "Sports" => "⚽",
+            "Social" => "🎉",
+            "Academic" => "🎓",
+            "Cultural" => "🎭",
+            _ => "📅"
+        };
+    }
+}

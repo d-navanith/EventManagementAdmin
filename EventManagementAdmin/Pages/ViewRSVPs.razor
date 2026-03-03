@@ -1,0 +1,364 @@
+﻿@page "/ViewRSVPs"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>All RSVPs - Admin Panel</PageTitle>
+
+@if (!isAuthorized)
+{
+    <div class="container animate-fade-in">
+        <div class="access-denied">
+            <div class="lock-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h3>Access Denied</h3>
+            <p class="text-muted">Only administrators can view all RSVPs. Please sign in with an admin account.</p>
+            <a href="AdminLogin" class="btn btn-danger mt-2">
+                <i class="bi bi-shield-lock me-2"></i>Sign In as Admin
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container animate-fade-in">
+        <div class="page-header">
+            <div class="page-icon" style="background: #e5f8f5; color: #00bda5;">
+                <i class="bi bi-people-fill"></i>
+            </div>
+            <div>
+                <h2>All Event Registrations</h2>
+                <small class="text-muted">View and manage all student RSVPs</small>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="card mb-4">
+            <div class="card-body py-3">
+                <div class="row align-items-end">
+                    <div class="col-md-3 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-funnel me-1"></i>Filter by Event</label>
+                        <select class="form-select" @bind="selectedEventFilter">
+                            <option value="">All Events</option>
+                            @foreach (var evt in eventsList.OrderBy(e => e.Title))
+                            {
+                                <option value="@evt.Id">@evt.Title</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-flag me-1"></i>Filter by Status</label>
+                        <select class="form-select" @bind="selectedStatusFilter">
+                            <option value="">All Statuses</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2 mb-md-0">
+                        <label class="form-label"><i class="bi bi-search me-1"></i>Search</label>
+                        <input type="text" class="form-control" placeholder="Search by student name..." @bind="searchTerm" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end gap-2">
+                        <button class="btn btn-outline-secondary flex-fill" @onclick="ClearFilters">
+                            <i class="bi bi-x-circle me-1"></i>Clear
+                        </button>
+                        <button class="btn btn-outline-primary" @onclick="LoadData" title="Refresh">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="text-center my-5">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading registrations...</p>
+            </div>
+        }
+        else if (!rsvps.Any())
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-calendar-check" style="font-size: 3rem; color: #cbd6e2;"></i>
+                <h5 class="mt-3 text-muted">No RSVPs Found</h5>
+                <p class="text-muted">No student registrations found yet.</p>
+            </div>
+        }
+        else
+        {
+            <!-- Summary Stats -->
+            <div class="row mb-4">
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #0091ae;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #0091ae;">@rsvps.Count</h4>
+                            <small class="text-muted">Total RSVPs</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #00bda5;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #00bda5;">@rsvps.Count(r => r.Status == "Confirmed")</h4>
+                            <small class="text-muted">Confirmed</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #f5c26b;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #d4a04a;">@rsvps.Count(r => r.Status == "Pending")</h4>
+                            <small class="text-muted">Pending</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #f2545b;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #f2545b;">@rsvps.Count(r => r.Status == "Cancelled")</h4>
+                            <small class="text-muted">Cancelled</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-muted mb-3"><small>Showing @FilteredRSVPs.Count of @rsvps.Count registrations</small></p>
+
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="ps-4">Event</th>
+                                    <th>Student Name</th>
+                                    <th>Email</th>
+                                    <th>Student ID</th>
+                                    <th>Registration Date</th>
+                                    <th>Status</th>
+                                    <th class="pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!FilteredRSVPs.Any())
+                                {
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4 text-muted">
+                                            <i class="bi bi-search me-1"></i>No RSVPs match your filters.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in FilteredRSVPs)
+                                    {
+                                        <tr>
+                                            <td class="ps-4 fw-medium">@item.EventTitle</td>
+                                            <td>@item.StudentName</td>
+                                            <td><small class="text-muted">@item.StudentEmail</small></td>
+                                            <td><code>@item.StudentId</code></td>
+                                            <td><small class="text-muted">@item.RegistrationDate</small></td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(item.Status)">
+                                                    @item.Status
+                                                </span>
+                                            </td>
+                                            <td class="pe-4">
+                                                <div class="d-flex gap-1 flex-wrap">
+                                                    @if (item.Status != "Confirmed")
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-success"
+                                                                @onclick='() => UpdateRSVPStatus(item.Id, "Confirmed")'
+                                                                title="Confirm this RSVP">
+                                                            <i class="bi bi-check-circle me-1"></i>Confirm
+                                                        </button>
+                                                    }
+                                                    @if (item.Status != "Cancelled")
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-danger"
+                                                                @onclick='() => UpdateRSVPStatus(item.Id, "Cancelled")'
+                                                                title="Cancel this RSVP">
+                                                            <i class="bi bi-x-circle me-1"></i>Cancel
+                                                        </button>
+                                                    }
+                                                    @if (item.Status == "Cancelled")
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-secondary"
+                                                                @onclick="() => DeleteRSVP(item.Id)"
+                                                                title="Delete this RSVP permanently">
+                                                            <i class="bi bi-trash me-1"></i>Delete
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3 animate-fade-in">
+                <i class="bi @(isSuccess ? "bi-check-circle" : "bi-x-circle") me-2"></i>@statusMessage
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<RSVPViewModel> rsvps = new();
+    private List<EventViewModel> eventsList = new();
+    private bool isLoading = true;
+    private bool isAuthorized = false;
+    private string statusMessage = "";
+    private bool isSuccess = false;
+    private string selectedEventFilter = "";
+    private string selectedStatusFilter = "";
+    private string searchTerm = "";
+
+    private List<RSVPViewModel> FilteredRSVPs => rsvps.Where(r =>
+        (string.IsNullOrEmpty(selectedEventFilter) || r.EventId == selectedEventFilter) &&
+        (string.IsNullOrEmpty(selectedStatusFilter) || r.Status == selectedStatusFilter) &&
+        (string.IsNullOrEmpty(searchTerm) || r.StudentName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+    ).ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isAuthorized = true;
+                    await LoadData();
+                    StateHasChanged();
+                }
+                else
+                {
+                    isAuthorized = false;
+                    isLoading = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isAuthorized = false;
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        statusMessage = "";
+        try
+        {
+            rsvps = await JS.InvokeAsync<List<RSVPViewModel>>("firebaseInterop.getRSVPs");
+            if (rsvps == null) rsvps = new();
+
+            eventsList = await JS.InvokeAsync<List<EventViewModel>>("firebaseInterop.getEvents");
+            if (eventsList == null) eventsList = new();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error loading RSVPs: " + ex.Message;
+            isSuccess = false;
+            rsvps = new();
+            eventsList = new();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateRSVPStatus(string id, string newStatus)
+    {
+        string action = newStatus == "Confirmed" ? "confirm" : "cancel";
+        if (await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to {action} this RSVP?"))
+        {
+            statusMessage = "";
+            try
+            {
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.updateRSVP", id, new { status = newStatus });
+                if (result.Success)
+                {
+                    isSuccess = true;
+                    statusMessage = $"RSVP {(newStatus == "Confirmed" ? "confirmed" : "cancelled")} successfully.";
+                }
+                else
+                {
+                    isSuccess = false;
+                    statusMessage = "Error: " + result.Error;
+                }
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                isSuccess = false;
+                statusMessage = $"Error updating RSVP: {ex.Message}";
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteRSVP(string id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "Are you sure you want to permanently delete this RSVP? This action cannot be undone."))
+        {
+            statusMessage = "";
+            try
+            {
+                var result = await JS.InvokeAsync<FirebaseResult>("firebaseInterop.deleteRSVP", id);
+                if (result.Success)
+                {
+                    isSuccess = true;
+                    statusMessage = "RSVP deleted permanently.";
+                }
+                else
+                {
+                    isSuccess = false;
+                    statusMessage = "Error: " + result.Error;
+                }
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                isSuccess = false;
+                statusMessage = "Error deleting RSVP: " + ex.Message;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void ClearFilters()
+    {
+        selectedEventFilter = "";
+        selectedStatusFilter = "";
+        searchTerm = "";
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Confirmed" => "bg-success",
+            "Pending" => "bg-warning",
+            "Cancelled" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

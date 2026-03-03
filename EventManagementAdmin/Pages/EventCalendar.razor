@@ -1,0 +1,418 @@
+﻿@page "/EventCalendar"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Event Calendar - Admin Panel</PageTitle>
+
+@if (!isAuthorized)
+{
+    <div class="container animate-fade-in">
+        <div class="access-denied">
+            <div class="lock-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h3>Access Denied</h3>
+            <p class="text-muted">Please sign in with your administrator credentials.</p>
+            <a href="AdminLogin" class="btn btn-danger mt-2">
+                <i class="bi bi-shield-lock me-2"></i>Sign In as Admin
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container animate-fade-in">
+        <div class="page-header">
+            <div class="page-icon" style="background: #e5f5f8; color: #0091ae;">
+                <i class="bi bi-calendar3"></i>
+            </div>
+            <div>
+                <h2>Event Calendar</h2>
+                <small class="text-muted">Visual overview of all campus events</small>
+            </div>
+        </div>
+
+        <!-- Calendar Navigation -->
+        <div class="card mb-4">
+            <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="PreviousMonth">
+                        <i class="bi bi-chevron-left me-1"></i> Previous
+                    </button>
+                    <h4 class="mb-0 fw-bold">
+                        <i class="bi bi-calendar3 me-2" style="color: #0091ae;"></i>
+                        @currentDate.ToString("MMMM yyyy")
+                    </h4>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="GoToToday">
+                            <i class="bi bi-calendar-check me-1"></i> Today
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="NextMonth">
+                            Next <i class="bi bi-chevron-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="text-center my-5">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading calendar events...</p>
+            </div>
+        }
+        else
+        {
+            <!-- Calendar Legend -->
+            <div class="d-flex flex-wrap gap-3 mb-3">
+                <span class="d-flex align-items-center gap-1">
+                    <span class="calendar-legend-dot" style="background: #0091ae;"></span>
+                    <small class="text-muted">Upcoming</small>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="calendar-legend-dot" style="background: #00bda5;"></span>
+                    <small class="text-muted">Ongoing</small>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="calendar-legend-dot" style="background: #7c98b6;"></span>
+                    <small class="text-muted">Completed</small>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span class="calendar-legend-dot" style="background: #f2545b;"></span>
+                    <small class="text-muted">Cancelled</small>
+                </span>
+            </div>
+
+            <!-- Calendar Grid -->
+            <div class="card calendar-card">
+                <div class="card-body p-0">
+                    <!-- Day Headers -->
+                    <div class="calendar-grid calendar-header-row">
+                        @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                        {
+                            <div class="calendar-header-cell">@day</div>
+                        }
+                    </div>
+
+                    <!-- Calendar Days -->
+                    @foreach (var week in GetCalendarWeeks())
+                    {
+                        <div class="calendar-grid">
+                            @foreach (var day in week)
+                            {
+                                var dayDate = day;
+                                var isCurrentMonth = dayDate.Month == currentDate.Month;
+                                var isToday = dayDate == DateTime.Today;
+                                var dayEvents = GetEventsForDate(dayDate);
+                                var hasEvents = dayEvents.Any();
+
+                                <div class="calendar-day-cell @(isCurrentMonth ? "" : "other-month") @(isToday ? "today" : "") @(hasEvents ? "has-events" : "")"
+                                     @onclick="() => SelectDate(dayDate)">
+                                    <div class="calendar-day-number @(isToday ? "today-number" : "")">
+                                        @dayDate.Day
+                                    </div>
+                                    @if (hasEvents && isCurrentMonth)
+                                    {
+                                        <div class="calendar-day-events">
+                                            @foreach (var evt in dayEvents.Take(3))
+                                            {
+                                                <div class="calendar-event-dot" style="background: @GetStatusColor(evt.Status);"
+                                                     title="@evt.Title (@evt.Time)">
+                                                    <span class="calendar-event-text">@TruncateTitle(evt.Title)</span>
+                                                </div>
+                                            }
+                                            @if (dayEvents.Count > 3)
+                                            {
+                                                <div class="calendar-more-events">
+                                                    +@(dayEvents.Count - 3) more
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Selected Date Events Panel -->
+            @if (selectedDate.HasValue)
+            {
+                <div class="card mt-4 animate-fade-in">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="background: #1a3a5c; color: white; border-radius: 8px 8px 0 0;">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar-date me-2"></i>
+                            Events on @selectedDate.Value.ToString("dddd, MMMM d, yyyy")
+                        </h5>
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => selectedDate = null">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @{
+                            var selectedEvents = GetEventsForDate(selectedDate.Value);
+                        }
+                        @if (!selectedEvents.Any())
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-calendar-x" style="font-size: 2rem; color: #cbd6e2;"></i>
+                                <p class="text-muted mt-2">No events scheduled for this date.</p>
+                                <a href="ManageEvents" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-plus-circle me-1"></i>Create Event
+                                </a>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="row">
+                                @foreach (var evt in selectedEvents)
+                                {
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card h-100" style="border-left: 4px solid @GetStatusColor(evt.Status);">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                                    <h6 class="fw-bold mb-0">@evt.Title</h6>
+                                                    <span class="badge" style="background: @GetStatusColor(evt.Status); color: white;">@evt.Status</span>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <small class="text-muted d-block">
+                                                        <i class="bi bi-clock me-1"></i>@evt.Time
+                                                    </small>
+                                                    <small class="text-muted d-block">
+                                                        <i class="bi bi-geo-alt me-1"></i>@evt.Location
+                                                    </small>
+                                                    <small class="text-muted d-block">
+                                                        <i class="bi bi-tag me-1"></i>@evt.Category
+                                                    </small>
+                                                </div>
+                                                <div class="d-flex gap-2 mt-2">
+                                                    <a href="ManageEvents/@evt.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-pencil me-1"></i>Edit
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Monthly Summary -->
+            <div class="row mt-4">
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #0091ae;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #0091ae;">@GetMonthlyEventCount()</h4>
+                            <small class="text-muted">Events This Month</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #00bda5;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #00bda5;">@GetMonthlyEventCountByStatus("Upcoming")</h4>
+                            <small class="text-muted">Upcoming</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #f5c26b;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #d4a04a;">@GetMonthlyEventCountByStatus("Ongoing")</h4>
+                            <small class="text-muted">Ongoing</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-2">
+                    <div class="card stats-card" style="border-left: 4px solid #7c98b6;">
+                        <div class="card-body py-3 text-center">
+                            <h4 class="mb-0 fw-bold" style="color: #7c98b6;">@GetMonthlyEventCountByStatus("Completed")</h4>
+                            <small class="text-muted">Completed</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool isAuthorized = false;
+    private bool isLoading = true;
+    private DateTime currentDate = DateTime.Today;
+    private DateTime? selectedDate = null;
+    private List<CalendarEvent> allEvents = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isAuthorized = true;
+                    await LoadEvents();
+                    StateHasChanged();
+                }
+                else
+                {
+                    isAuthorized = false;
+                    isLoading = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isAuthorized = false;
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadEvents()
+    {
+        isLoading = true;
+        try
+        {
+            var events = await JS.InvokeAsync<List<CalendarEventRaw>>("firebaseInterop.getEventsForCalendar");
+            if (events != null)
+            {
+                allEvents = events.Select(e => new CalendarEvent
+                {
+                    Id = e.Id ?? "",
+                    Title = e.Title ?? "",
+                    Date = e.Date ?? "",
+                    Time = e.Time ?? "",
+                    Category = e.Category ?? "",
+                    Status = e.Status ?? "",
+                    Location = e.Location ?? ""
+                }).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading calendar events: " + ex.Message);
+            allEvents = new();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<List<DateTime>> GetCalendarWeeks()
+    {
+        var weeks = new List<List<DateTime>>();
+        var firstDayOfMonth = new DateTime(currentDate.Year, currentDate.Month, 1);
+        var startDate = firstDayOfMonth.AddDays(-(int)firstDayOfMonth.DayOfWeek);
+
+        var current = startDate;
+        while (current <= firstDayOfMonth.AddMonths(1).AddDays(-1) || current.DayOfWeek != DayOfWeek.Sunday)
+        {
+            var week = new List<DateTime>();
+            for (int i = 0; i < 7; i++)
+            {
+                week.Add(current);
+                current = current.AddDays(1);
+            }
+            weeks.Add(week);
+
+            if (weeks.Count >= 6) break;
+        }
+
+        return weeks;
+    }
+
+    private List<CalendarEvent> GetEventsForDate(DateTime date)
+    {
+        var dateStr = date.ToString("yyyy-MM-dd");
+        return allEvents.Where(e => e.Date == dateStr).ToList();
+    }
+
+    private void SelectDate(DateTime date)
+    {
+        selectedDate = date;
+    }
+
+    private void PreviousMonth()
+    {
+        currentDate = currentDate.AddMonths(-1);
+        selectedDate = null;
+    }
+
+    private void NextMonth()
+    {
+        currentDate = currentDate.AddMonths(1);
+        selectedDate = null;
+    }
+
+    private void GoToToday()
+    {
+        currentDate = DateTime.Today;
+        selectedDate = DateTime.Today;
+    }
+
+    private int GetMonthlyEventCount()
+    {
+        return allEvents.Count(e =>
+        {
+            if (DateTime.TryParse(e.Date, out var eventDate))
+            {
+                return eventDate.Year == currentDate.Year && eventDate.Month == currentDate.Month;
+            }
+            return false;
+        });
+    }
+
+    private int GetMonthlyEventCountByStatus(string status)
+    {
+        return allEvents.Count(e =>
+        {
+            if (DateTime.TryParse(e.Date, out var eventDate))
+            {
+                return eventDate.Year == currentDate.Year && eventDate.Month == currentDate.Month && e.Status == status;
+            }
+            return false;
+        });
+    }
+
+    private string GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Upcoming" => "#0091ae",
+            "Ongoing" => "#00bda5",
+            "Completed" => "#7c98b6",
+            "Cancelled" => "#f2545b",
+            _ => "#0091ae"
+        };
+    }
+
+    private string TruncateTitle(string title)
+    {
+        if (string.IsNullOrEmpty(title)) return "";
+        return title.Length > 15 ? title.Substring(0, 15) + "…" : title;
+    }
+
+    // Raw model for JS interop (case-insensitive mapping)
+    public class CalendarEventRaw
+    {
+        public string Id { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Date { get; set; } = "";
+        public string Time { get; set; } = "";
+        public string Category { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string Location { get; set; } = "";
+    }
+}

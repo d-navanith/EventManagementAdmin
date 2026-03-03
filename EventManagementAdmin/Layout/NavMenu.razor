@@ -1,0 +1,176 @@
+﻿@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">
+            <img src="images/logo-icon.png" alt="Campus Events" style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover; vertical-align: middle; margin-right: 8px;" />Admin Panel
+        </a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+    <nav class="nav flex-column">
+        @if (isLoggedIn)
+        {
+            <!-- Profile Section in Sidebar -->
+            <div class="sidebar-profile-section px-3 py-3 text-center">
+                @if (!string.IsNullOrEmpty(profileImageUrl))
+                {
+                    <img src="@profileImageUrl" class="sidebar-profile-img" alt="Profile" />
+                }
+                else
+                {
+                    <div class="sidebar-profile-placeholder">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                }
+                <div class="sidebar-profile-name mt-2">
+                    @if (!string.IsNullOrEmpty(displayName))
+                    {
+                        @displayName
+                    }
+                    else
+                    {
+                        <span>Administrator</span>
+                    }
+                </div>
+                <small class="sidebar-profile-email">@userEmail</small>
+            </div>
+
+            <hr style="border-color: rgba(255,255,255,0.08); margin: 0 1rem;" />
+
+            <!-- Admin Dashboard -->
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <img src="https://cdn-icons-png.flaticon.com/512/1828/1828765.png" alt="" class="nav-icon-img" />
+                    <span>Dashboard</span>
+                </NavLink>
+            </div>
+
+            <!-- Event Calendar -->
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="EventCalendar">
+                    <img src="https://cdn-icons-png.flaticon.com/512/2693/2693507.png" alt="" class="nav-icon-img" />
+                    <span>Event Calendar</span>
+                </NavLink>
+            </div>
+
+            <!-- Admin navigation -->
+            <div class="nav-section-label px-3 mt-3">
+                <small class="text-uppercase" style="color: rgba(255,255,255,0.3); font-size: 0.65rem; letter-spacing: 0.1em; font-weight: 600;">Management</small>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="ManageEvents">
+                    <img src="https://cdn-icons-png.flaticon.com/512/3953/3953226.png" alt="" class="nav-icon-img" />
+                    <span>Manage Events</span>
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="ViewFeedback">
+                    <img src="https://cdn-icons-png.flaticon.com/512/1828/1828884.png" alt="" class="nav-icon-img" />
+                    <span>View Feedback</span>
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="ViewRSVPs">
+                    <img src="https://cdn-icons-png.flaticon.com/512/681/681494.png" alt="" class="nav-icon-img" />
+                    <span>All RSVPs</span>
+                </NavLink>
+            </div>
+
+            <div class="nav-section-label px-3 mt-3">
+                <small class="text-uppercase" style="color: rgba(255,255,255,0.3); font-size: 0.65rem; letter-spacing: 0.1em; font-weight: 600;">Browse</small>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="BrowseEvents">
+                    <img src="https://cdn-icons-png.flaticon.com/512/2278/2278049.png" alt="" class="nav-icon-img" />
+                    <span>Browse Events</span>
+                </NavLink>
+            </div>
+
+            <div class="nav-section-label px-3 mt-3">
+                <small class="text-uppercase" style="color: rgba(255,255,255,0.3); font-size: 0.65rem; letter-spacing: 0.1em; font-weight: 600;">Account</small>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="AdminProfile">
+                    <img src="https://cdn-icons-png.flaticon.com/512/1077/1077114.png" alt="" class="nav-icon-img" />
+                    <span>My Profile</span>
+                </NavLink>
+            </div>
+
+            <!-- Logout -->
+            <div class="nav-item px-3 mt-3">
+                <button class="nav-link btn btn-link w-100 text-start" style="color: #48adfc;" @onclick="HandleLogout">
+                    <img src="https://cdn-icons-png.flaticon.com/512/1828/1828427.png" alt="" class="nav-icon-img nav-icon-logout" />
+                    <span>Logout</span>
+                </button>
+            </div>
+        }
+        else
+        {
+            <!-- Not logged in -->
+            <div class="nav-item px-3 mt-3">
+                <NavLink class="nav-link" href="AdminLogin">
+                    <img src="images/logo-icon.png" alt="" class="nav-icon-img" style="border-radius: 4px;" />
+                    <span>Admin Login</span>
+                </NavLink>
+            </div>
+        }
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private bool isLoggedIn = false;
+    private string profileImageUrl = "";
+    private string displayName = "";
+    private string userEmail = "";
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isLoggedIn = true;
+                    profileImageUrl = userInfo.ProfileImageUrl ?? "";
+                    displayName = userInfo.DisplayName ?? "";
+                    userEmail = userInfo.Email ?? "";
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isLoggedIn = false;
+            }
+        }
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async Task HandleLogout()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("firebaseAuth.logout");
+            isLoggedIn = false;
+            Nav.NavigateTo("/AdminLogin", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Logout error: " + ex.Message);
+        }
+    }
+}

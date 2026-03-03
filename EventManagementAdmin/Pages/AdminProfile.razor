@@ -1,0 +1,443 @@
+﻿@page "/AdminProfile"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>My Profile - Admin Panel</PageTitle>
+
+@if (!isAuthorized)
+{
+    <div class="container animate-fade-in">
+        <div class="access-denied">
+            <div class="lock-icon">
+                <i class="bi bi-shield-lock-fill"></i>
+            </div>
+            <h3>Access Denied</h3>
+            <p class="text-muted">Please sign in with your administrator credentials.</p>
+            <a href="AdminLogin" class="btn btn-danger mt-2">
+                <i class="bi bi-shield-lock me-2"></i>Sign In as Admin
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container animate-fade-in">
+        <div class="page-header">
+            <div class="page-icon" style="background: linear-gradient(135deg, rgba(72, 173, 252, 0.1), rgba(72, 173, 252, 0.2)); color: #48adfc;">
+                <i class="bi bi-person-circle"></i>
+            </div>
+            <div>
+                <h2>My Profile</h2>
+                <small class="text-muted">Manage your admin profile and profile picture</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Profile Image Section -->
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-body text-center p-4">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-camera me-2"></i>Profile Picture</h6>
+
+                        <!-- Current Profile Image -->
+                        <div class="profile-image-container mb-3">
+                            @if (!string.IsNullOrEmpty(previewImageUrl))
+                            {
+                                <img src="@previewImageUrl" class="profile-image-large" alt="Preview" />
+                            }
+                            else if (!string.IsNullOrEmpty(currentProfileImageUrl))
+                            {
+                                <img src="@currentProfileImageUrl" class="profile-image-large" alt="Profile" />
+                            }
+                            else
+                            {
+                                <div class="profile-image-placeholder-large">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Upload Button -->
+                        <div class="mb-3">
+                            <label class="btn btn-outline-primary btn-sm w-100">
+                                <i class="bi bi-upload me-1"></i> Choose Image
+                                <InputFile OnChange="OnProfileImageChange" class="d-none" accept="image/jpeg,image/png,image/gif" />
+                            </label>
+                        </div>
+
+                        @if (isUploadingImage)
+                        {
+                            <div class="text-center mb-2">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <small class="ms-1 text-muted">Processing image...</small>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(previewImageUrl))
+                        {
+                            <div class="d-flex gap-2 justify-content-center">
+                                <button class="btn btn-sm btn-success" @onclick="SaveProfileImage" disabled="@isSaving">
+                                    @if (isSaving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    <i class="bi bi-check-circle me-1"></i>Save
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelImageChange">
+                                    <i class="bi bi-x-circle me-1"></i>Cancel
+                                </button>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(currentProfileImageUrl) && string.IsNullOrEmpty(previewImageUrl))
+                        {
+                            <button class="btn btn-sm btn-outline-danger mt-2" @onclick="RemoveProfileImage" disabled="@isSaving">
+                                <i class="bi bi-trash me-1"></i>Remove Image
+                            </button>
+                        }
+
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle me-1"></i>Max file size: 1MB. Supported: JPG, PNG, GIF
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Details Section -->
+            <div class="col-md-8 mb-4">
+                <div class="card">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-person-lines-fill me-2"></i>Profile Details</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label">Display Name</label>
+                            <input type="text" class="form-control" @bind="editDisplayName" placeholder="Enter your display name" />
+                            <small class="text-muted">This name will be shown in the sidebar and top bar.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Email Address</label>
+                            <input type="email" class="form-control" value="@userEmail" disabled />
+                            <small class="text-muted">Email cannot be changed from here.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Role</label>
+                            <input type="text" class="form-control" value="Administrator" disabled />
+                        </div>
+
+                        <button class="btn btn-primary" @onclick="SaveProfileDetails" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            <i class="bi bi-check-circle me-1"></i>
+                            @(isSaving ? "Saving..." : "Save Changes")
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Account Info Card -->
+                <div class="card mt-4">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-shield-check me-2"></i>Account Information</h6>
+                        <div class="row">
+                            <div class="col-sm-6 mb-3">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="account-info-icon" style="background: rgba(72, 173, 252, 0.1); color: #48adfc;">
+                                        <i class="bi bi-envelope-fill"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block" style="line-height: 1.2; margin-bottom: 2px;">Email</small>
+                                        <span class="fw-medium" style="font-size: 0.9rem; word-break: break-all;">@userEmail</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 mb-3">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="account-info-icon" style="background: rgba(6, 214, 160, 0.1); color: #06d6a0;">
+                                        <i class="bi bi-shield-fill-check"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block" style="line-height: 1.2; margin-bottom: 2px;">Role</small>
+                                        <span class="badge bg-danger">Administrator</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 mb-3">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="account-info-icon" style="background: rgba(247, 183, 49, 0.1); color: #f7b731;">
+                                        <i class="bi bi-key-fill"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block" style="line-height: 1.2; margin-bottom: 2px;">User ID</small>
+                                        <code style="font-size: 0.75rem; word-break: break-all;">@userUid</code>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 mb-3">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="account-info-icon" style="background: rgba(76, 201, 240, 0.1); color: #4cc9f0;">
+                                        <i class="bi bi-image-fill"></i>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block" style="line-height: 1.2; margin-bottom: 2px;">Profile Image</small>
+                                        <span class="fw-medium" style="font-size: 0.9rem;">@(string.IsNullOrEmpty(currentProfileImageUrl) ? "Not set" : "Uploaded")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3 animate-fade-in">
+                <i class="bi @(isSuccess ? "bi-check-circle" : "bi-x-circle") me-2"></i>@statusMessage
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool isAuthorized = false;
+    private bool isSaving = false;
+    private bool isUploadingImage = false;
+    private bool isSuccess = false;
+    private string statusMessage = "";
+    private string userEmail = "";
+    private string userUid = "";
+    private string currentProfileImageUrl = "";
+    private string editDisplayName = "";
+    private string previewImageUrl = "";
+    private string pendingImageBase64 = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var userInfo = await JS.InvokeAsync<UserRoleInfo>("firebaseAuth.getUserRole");
+                if (userInfo != null && userInfo.Role == "admin")
+                {
+                    isAuthorized = true;
+                    userEmail = userInfo.Email;
+                    userUid = userInfo.Uid;
+                    currentProfileImageUrl = userInfo.ProfileImageUrl ?? "";
+                    editDisplayName = userInfo.DisplayName ?? "";
+                    StateHasChanged();
+                }
+                else
+                {
+                    isAuthorized = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                isAuthorized = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task OnProfileImageChange(InputFileChangeEventArgs e)
+    {
+        isUploadingImage = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+            var maxSize = 1024 * 1024; // 1MB limit
+
+            // Validate file type
+            var allowedTypes = new[] { "image/jpeg", "image/png", "image/gif" };
+            if (!allowedTypes.Contains(file.ContentType.ToLower()))
+            {
+                statusMessage = "Invalid file type. Please upload a JPG, PNG, or GIF image.";
+                isSuccess = false;
+                isUploadingImage = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (file.Size > maxSize)
+            {
+                statusMessage = "Image file size must be less than 1MB.";
+                isSuccess = false;
+                isUploadingImage = false;
+                StateHasChanged();
+                return;
+            }
+
+            // Read the file into a buffer
+            using var stream = file.OpenReadStream(maxSize);
+            using var memoryStream = new System.IO.MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var buffer = memoryStream.ToArray();
+
+            pendingImageBase64 = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+            previewImageUrl = pendingImageBase64;
+        }
+        catch (Exception ex)
+        {
+            statusMessage = "Error processing image: " + ex.Message;
+            isSuccess = false;
+        }
+        finally
+        {
+            isUploadingImage = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveProfileImage()
+    {
+        if (string.IsNullOrEmpty(pendingImageBase64)) return;
+
+        isSaving = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            // Upload profile image via JS interop
+            var result = await JS.InvokeAsync<ProfileUpdateResult>(
+                "firebaseAuth.uploadAndUpdateProfileImage",
+                pendingImageBase64
+            );
+
+            if (result.Success)
+            {
+                currentProfileImageUrl = result.ProfileImageUrl ?? previewImageUrl;
+                previewImageUrl = "";
+                pendingImageBase64 = "";
+                isSuccess = true;
+                statusMessage = "Profile image updated successfully! The page will refresh to show changes everywhere.";
+                StateHasChanged();
+                // Auto-refresh after a short delay so sidebar/topbar update
+                await Task.Delay(1500);
+                Nav.NavigateTo("/AdminProfile", forceLoad: true);
+            }
+            else
+            {
+                isSuccess = false;
+                statusMessage = "Error updating profile image: " + result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            statusMessage = "Error: " + ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelImageChange()
+    {
+        previewImageUrl = "";
+        pendingImageBase64 = "";
+    }
+
+    private async Task RemoveProfileImage()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to remove your profile image?"))
+            return;
+
+        isSaving = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var result = await JS.InvokeAsync<FirebaseResult>("firebaseAuth.removeProfileImage");
+            if (result.Success)
+            {
+                currentProfileImageUrl = "";
+                isSuccess = true;
+                statusMessage = "Profile image removed successfully! The page will refresh to show changes.";
+                StateHasChanged();
+                await Task.Delay(1500);
+                Nav.NavigateTo("/AdminProfile", forceLoad: true);
+            }
+            else
+            {
+                isSuccess = false;
+                statusMessage = "Error removing profile image: " + result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            statusMessage = "Error: " + ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveProfileDetails()
+    {
+        isSaving = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            // Update display name only (no image change)
+            var result = await JS.InvokeAsync<ProfileUpdateResult>("firebaseAuth.updateDisplayName", editDisplayName);
+            if (result.Success)
+            {
+                isSuccess = true;
+                statusMessage = "Profile details updated successfully! The page will refresh to show changes.";
+                StateHasChanged();
+                await Task.Delay(1500);
+                Nav.NavigateTo("/AdminProfile", forceLoad: true);
+            }
+            else
+            {
+                isSuccess = false;
+                statusMessage = "Error updating profile: " + result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            statusMessage = "Error: " + ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    // Result model for profile update
+    public class ProfileUpdateResult
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("profileImageUrl")]
+        public string ProfileImageUrl { get; set; } = "";
+
+        [System.Text.Json.Serialization.JsonPropertyName("displayName")]
+        public string DisplayName { get; set; } = "";
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string Error { get; set; } = "";
+    }
+}
